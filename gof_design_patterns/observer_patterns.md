@@ -5,6 +5,7 @@
 1. 目的
 2. クラス図
 3. 実現方法
+4. 注意点
 
 ## 目的
 
@@ -28,197 +29,222 @@
 
 ## 実装例
 
-### 1.subject の作成
-
-従業員情報が更新された時、従業員数の推移グラフを更新したい場合で考える<br>
-Employees という Subject を作成した。新しく従業員の年齢別円グラフを作成し、このグラフも更新したい場合、Employees に円グラフを更新するときのロジックを追加しなければならない
+物件の募集状況が更新されたとき、担当者や顧客のメールアドレスに通知したいケースで考える
 
 ```ruby
-class Employees
-  def initialize(employees)
-    @employees = employees
-  end
+class Property
+  attr_reader :name, :offer_status, :chinryo
 
-  def add_employee(employee)
-    @employees << employee
-    draw_line_graph
-    draw_pie_graph
-  end
-
-  def delete_employees(employee)
-    @employees.delete(employee)
-    draw_line_graph
-    draw_pie_graph
-  end
-
-  def draw_line_graph
-    LineGraph.new(@employees).draw
-  end
-
-  def draw_pie_graph
-    PieGraph.new(@employees).draw
-  end
-end
-
-class Employee
-  attr_reader :name, :age, :join_date
-
-  def initialize(name, age, join_date)
+  # @param name [String]
+  # @param offer_status [String]
+  # @param chinryo [Integer]
+  def initialize(name:, offer_status:, chinryo:)
     @name = name
-    @age = age
-    @join_date = join_date
+    @offer_status = offer_status # 募集状況
+    @chinryo = chinryo
   end
 end
 
-class EmployeeLineGraph
-  def initialize(employees)
-    @employees = employees
+class Manager
+  attr_reader :name, :email
+
+  def initialize(name:, email:)
+    @name = name
+    @email = email
   end
 
-  # 折れ線グラフを作成するロジック
-  def draw
-    ...
+  def update(property)
+    puts "物件の募集状況が#{property.offer_status}に更新されました"
+    # 登録されているemail宛にメール送るロジック
   end
 end
 
-class EmployeePieGraph
-  def initialize(employees)
-    @employees
+class Client
+  attr_reader :name, :email
+
+  def initialize(name:, email:)
+    @name = name
+    @email = email
   end
 
-  # 円グラフを作成するロジック
-  def draw
-    ...
+  def update(property)
+    puts "物件の募集状況が#{property.offer_status}に更新されました"
+    # 登録されているemail宛にメール送るロジック
   end
 end
+
+property = Property.new(name: '田中ハイム', offer_status: '居住中', chinryo: 60000)
+manager = Manager.new(name: '田中', email: 'manager@test.co.jp')
+client = Client.new(name: '伊藤', email: 'client@test.co.jp')
 ```
 
-### 2. subject が observer のリストを購読するようにする
+### 1. 募集状況の更新を担当者と顧客に通知する機能を作成
 
-これにより Employees は各グラフオブジェクトの実装を知らなくても良くなる。これにより 1.observer を動的に付け替えたりすることが容易になる(円グラフは 1 日 1 回だけ更新したい場合は、delete_observer で消す)、2.observer を追加するときは Observer のサブクラスを add_observer で追加するだけで済み、拡張しやすくなる
+募集状況の更新を担当者と顧客に通知する機能を作成した<br>
+この例の悪いところは、
+
+- Property が Manger と Client の内部構造(クラス)を知っているため、Manager や Client を修正した時に、Property に影響がないか確認しなければならない
+- 通知先が増える度に、Property が通知先を区別しなければならなくなる
 
 ```ruby
-class Employees
-  def initialize(employees)
-    @employees = employees
-    @observers = []
+class Property
+  attr_reader :name, :offer_status, :chinryo
+
+  def initialize(name:, offer_status:, chinryo:, manager:, client:)
+    @name = name
+    @offer_status = offer_status
+    @chinryo = chinryo
+    @manager = manager
+    @client = client
   end
 
-  def add_employee(employee)
-    @employees << employee
-    notify
+  def offer_status=(offer_status)
+    @offer_status = offer_status
+    @manager.update(self)
+    @client.update(self)
   end
+end
 
-  def delete_employees(employee)
-    @employees.delete(employee)
-    notify
-  end
+property_info_hash = { name: '田中ハイム', offer_status: '居住中', chinryo: 60000, manager: manager, client: client }
+property = Property.new(**property_info_hash)
+property.offer_status = '空き'
 
+=> 物件の募集状況が空きに更新されました
+```
+
+### 2. subject を作成する
+
+通知に関する機能を Subject に分離し、受信側のリストを持つようにする。こうすることで、通知者は受信側を区別する必要がなくなる
+
+```ruby
+module Subject
   def add_observer(observer)
+    @observers = [] unless defined? @observers
     @observers << observer
   end
 
   def delete_observer(observer)
-    @observers.delete(observer)
+    @observers.delete(observer) if defined? @observers
   end
 
-  def notify
+  def notify_observers
+    return unless defined? @observers
+
     @observers.each do |observer|
-      observer.update
+      observer.update(self) # 通信者が変更されたことを知りたいため、自ずとselfになる
     end
   end
 end
 
-class LineGraph
-  # 折れ線グラフの見た目を更新する処理
-  def update(employees)
-    @employees = employees
-    draw
-    ...
+class Property
+  include Subject
+  attr_reader :name, :offer_status, :chinryo
+
+  def initialize(name:, offer_status:, chinryo:)
+    @name = name
+    @offer_status = offer_status
+    @chinryo = chinryo
   end
 
-  def draw
-    ...
-    puts '折れ線グラフの表示'
-  end
-end
-
-class BarGraph
-  # 棒グラフの見た目を更新する処理
-  def update(area)
-    @employees = employees
-    draw
-    ...
-  end
-
-  def draw
-    ...
-    puts '円グラフの表示'
+  def offer_status=(offer_status)
+    @offer_status = offer_status
+    notify_observers
   end
 end
 
-employees = Employees.new
-line_graph = LineGraph.new(employees)
-bar_graph = BarGraph.new(employees)
+property = Property.new(name: '田中ハイム', offer_status: '居住中', chinryo: 60000)
+property.add_observer(manager)
+property.add_observer(client)
+
+property.offer_status = '空き'
+
+=> 物件の募集状況が空きに更新されました
 ```
 
-### 3. subject と observer の共通インターフェースを抜き出す
+### 3. 受信者が共通のインターフェース observer を持つようにする
 
-observe が共通のインターフェース(update)を持つことで、observer のサブクラスであれば、リストに登録するだけで全ての observer に通知することができる
+observe が共通のインターフェース(update)を持つことで、observer クラスを mixin すれば使えることが確定するため、Property は Manger や Client のことを知らなくてよくなる
 
 ```ruby
-class Subject
-  def initialize
-    @observers = []
-  end
-
-  def add_observer(observer)
-    @observers << observer
-  end
-
-  def delete_observer(observer)
-    @observers.delete(observer)
-  end
-
-  def notify
-    @observers.each do |observer|
-      observer.update
-    end
+module Observer
+  def update(_object)
+    raise NotImplementedError, 'include先で再定義する必要があります'
   end
 end
 
-class Employees << Subject
-  def add_employee(employee)
-    @employees << employee
-    notify
-  end
-
-  def delete_employees(employee)
-    @employees.delete(employee)
-    notify
-  end
-end
-
-class Observer
-  def update(area)
-  end
-end
-
-class LineGraph < Graph
+class Manager
+  include Observer
   ...
 end
 
-class BarGraph < Graph
+class Client
+  include Observer
   ...
 end
 ```
 
-## ライブラリで使用されている例
+## 注意点
 
-## 実際に使用するときの例
+### 無駄な通知しないようにすること
 
-## 気づき
+observer パターンの注意点として、無駄な通知しないようにすること。例えば、offer_status が更新の時に呼ばれた時、必ずしも前の値とことなるとは限らない。また、offer_status が頻繁に呼ばれるかもしれない。その場合、担当者と顧客に無駄に通知されてしまい、マシンのリソースを無駄に食ってしまう可能性がある<br>
+このように無駄な通知をしないよう、どのような時に通知するべきかは吟味しておく必要がある。ruby の Observable には changed というフラグを提供している。Observer は change 通知の責務をになっているため、通知するかどうかを制御するメソッドを汎用的に提供している(実際に通知するかどうかの制御は、Observer 側の責務のため)
 
-- メルマガ配信の例で考えてもわかりやすそう
-  - メールで配信する場合
-  - sms で配信する場合
+https://docs.ruby-lang.org/ja/latest/class/Observable.html
+
+```ruby
+class Property
+  include Observable
+  attr_reader :name, :offer_status, :chinryo
+
+  def initialize(name:, offer_status:, chinryo:)
+    @name = name
+    @offer_status = offer_status
+    @chinryo = chinryo
+  end
+
+  def offer_status=(offer_status)
+    @offer_status = offer_status
+    if @offer_status != offer_status
+      changed
+      notify_observers
+    end
+  end
+end
+```
+
+### データ間の整合性が強く求められる場合は注意すること
+
+プロバイダーとオブザーバーの間の結合は疎であるため、例外が起きた場合でも、お互いに影響を与えないかどうかを確認する必要がある<br>
+
+offer_status が正常に更新された時、募集の掲載を落とすのではなく、offer_status と募集の掲載は同時に落とさなければならない。下記の例だと、Property が DB に変更を保存した後、notify_observer でエラーになった時、不整合が起きる。notify_observer が正常に済み、その後 offer_status の更新に失敗した時も同様。(もう一度通知する際に、関係のないところまで通知してしまう)。
+
+```ruby
+class Property
+  def offer_status=(offer_status)
+    @offer_status = offer_status
+    if @offer_status != offer_status
+      changed
+      notify_observers
+    end
+  end
+end
+
+class Advertisement
+  def initalize(property, publication)
+    @property = property
+    @publication = publication
+  end
+  def update(property)
+    @property = property
+    if @publication && (property.offer_status == '居住中')
+      # 掲載を落とす処理
+      raise StandardError
+    end
+  end
+end
+```
+
+## 感想
+
+front のフックメソッドとやっていることが近いと思った。useState で状態が変更された時、通知するという考え方とにている
