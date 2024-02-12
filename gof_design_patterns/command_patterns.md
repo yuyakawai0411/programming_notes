@@ -41,17 +41,14 @@ obj.call
 
 ## 構成図
 
-- Command は命令の内容(object)と命令の実行(execute)を持つ
+- Command は命令の内容と命令の実行(execute)を持つ
 
 ```mermaid
 classDiagram
 Command <| -- ConcreteCommand1
 Command <| -- ConcreteCommand2
-Command : object
 Command : execute()
-ConcreteCommand1 : object
 ConcreteCommand1 : execute()
-ConcreteCommand2 : object
 ConcreteCommand2 : execute()
 ```
 
@@ -134,3 +131,90 @@ calculated_values(values, &add_half_element)
 ```
 
 ## command パターンの使った実装 Command
+
+Excel 等で実行したコマンドを暗記しておき、元に戻せるようにしたいケースで考える<br>
+命令の内容が複雑だった(Proc で定義するには大きすぎる)り、複数の命令を保持したい場合は、command オブジェクトが役に立つ
+
+### 1. 抽象クラス command を作成する
+
+```ruby
+class Command
+  def execute
+    raise NotImplementedError
+  end
+
+  def unexecute
+    raise NotImplementedError
+  end
+end
+
+class DeleteSheet < Command
+  def initialize(path)
+    @path = path
+  end
+
+  def execute
+    @contents = File.read(@path)
+    File.delete(@path)
+  end
+
+  # 巻き戻し処理
+  def unexecute
+    return unless @contents
+
+    file = File.open(@path, 'w')
+    file.write(@contents)
+    file.close
+  end
+end
+
+class CreateSheet < Command
+  def initialize(path)
+    @path = path
+    @contents = contents
+  end
+
+  def execute
+    file = File.open(@path, 'w')
+    file.write(@contents)
+    file.close
+  end
+
+  # 巻き戻し処理
+  def unexecute
+    File.delete(@path)
+  end
+end
+```
+
+### 2. 命令の実行履歴がわかるように command のコレクションを作成する
+
+```ruby
+class CommandCollection
+  def initialize
+    @commands = []
+  end
+
+  def add_command(command)
+    @commands << command
+  end
+
+  def execute
+    @commands.each { |cmd| cmd.execute }
+  end
+
+  def unexecute
+    @commands.reverse.each { |cmd| cmd.unexecute }
+  end
+end
+
+command_collection = CommandCollection.new
+command_collection.add_command(DeleteSheet.new('sample1.text'))
+command_collection.add_command(CreateSheet.new('sample2.text'))
+# 実行処理
+command_collection.execute
+# 巻き戻し処理
+command_collection.unexecute
+```
+
+## 具体的な実装
