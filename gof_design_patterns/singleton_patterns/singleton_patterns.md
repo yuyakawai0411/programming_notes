@@ -90,7 +90,7 @@ logger.info('1つ目の処理を実行')
 
 以下のようにして、singleton を実装する。
 
-1. クラス変数に自身のインスタンスを格納し、外部から初期化されないように new を private 化する => インスタンスを複数作成されないようにするため
+1. 外部から初期化されないように new を private 化する => インスタンスを複数作成されないようにするため
 2. クラスメソッドとしてインスタンスにアクセスする手段を提供する => グローバルなアクセスを提供するため
 
 ```ruby
@@ -107,7 +107,7 @@ class Logger
   end
 
   def self.instance
-    @@instance ||= new
+    @instance ||= new
   end
 
   def error(msg)
