@@ -11,7 +11,7 @@
 
 ## 適用箇所
 
-命令を管理したいシチュエーションで使える
+命令を管理したい(命令の内容を先に定義しておいて、後で実装したい)シチュエーションで使える
 
 - 特定のタイミングで命令を実行したい
 - 選択肢に応じて複数の命令を一括で実行したい
@@ -27,16 +27,15 @@
 
 ### 解決すること
 
-命令を管理したいシチュエーション(命令の内容+命令の実行)は多く存在する。シチュエーション毎にオブジェクトを作成してしまうと、オブジェクトの数が膨大になってしまう。命令の内容をオブジェクトとして切り出し、命令の内容と命令の実行を分離することで、再利用性を高めることが command パターンである
+命令を管理したいシチュエーションは多く存在する。シチュエーション毎にオブジェクトを作成してしまうと、オブジェクトの数が膨大になってしまう(実行タイミングは異なるが命令は同じ等)。命令の内容をオブジェクトとして切り出し、命令の内容と命令の実行を分離することで、再利用性を高めることが command パターンである
 
 ```ruby
 # 命令の内容と実行が切り離されていない
 File.open('sample.rb', 'r')
 
 # 命令の内容と実行が切り離されている
-# 遅延実行や実行する前に命令を記述したい場合などに使える
-obj = Proc.new { File.open('sample.rb', 'r') }
-obj.call
+obj = Proc.new { File.open('sample.rb', 'r') } # 命令の内容
+obj.call # 命令の実行
 ```
 
 ## 構成図
@@ -148,6 +147,24 @@ class Command
   end
 end
 
+class CreateSheet < Command
+  def initialize(path)
+    @path = path
+    @contents = contents
+  end
+
+  def execute
+    file = File.open(@path, 'w')
+    file.write(@contents)
+    file.close
+  end
+
+  # 巻き戻し処理
+  def unexecute
+    File.delete(@path)
+  end
+end
+
 class DeleteSheet < Command
   def initialize(path)
     @path = path
@@ -165,24 +182,6 @@ class DeleteSheet < Command
     file = File.open(@path, 'w')
     file.write(@contents)
     file.close
-  end
-end
-
-class CreateSheet < Command
-  def initialize(path)
-    @path = path
-    @contents = contents
-  end
-
-  def execute
-    file = File.open(@path, 'w')
-    file.write(@contents)
-    file.close
-  end
-
-  # 巻き戻し処理
-  def unexecute
-    File.delete(@path)
   end
 end
 ```
@@ -209,12 +208,42 @@ class CommandCollection
 end
 
 command_collection = CommandCollection.new
-command_collection.add_command(DeleteSheet.new('sample1.text'))
-command_collection.add_command(CreateSheet.new('sample2.text'))
-# 実行処理
+command_collection.add_command(CreateSheet.new('sample1.text'))
+command_collection.add_command(DeleteSheet.new('sample2.text'))
+# コピー実行処理
 command_collection.execute
-# 巻き戻し処理
+# コピー巻き戻し処理
 command_collection.unexecute
 ```
 
 ## 具体的な実装
+
+### ruby で command が使われているケース
+
+Lrama という構文解析をする module で定義されていた。
+https://github.com/ruby/ruby/blob/master/tool/lrama/lib/lrama/command.rb
+
+### bkk での実装
+
+例えば kensakukun から部屋を取得する処理は、検索パラメータの作成(Kensakukun::V3::Query)と、検索の実行(Kensakukun::RentRoomBuildingCollection)はオブジェクトを分離している。これも Command パターンの一種であると考えられる。
+
+```ruby
+module Kensakukun
+  class RentRoomBuildingCollection
+    def search_motoduke_rent_rooms(params, connect_account_ids)
+      query = Kensakukun::V3::Query.build_for_motoduke_rent_rooms(
+        params[:filter], params[:page], connect_account_ids
+      )
+      search_and_build(query) # 検索の実行
+    end
+
+    private
+
+    def search_and_build(query)
+      response = Kensakukun::Client.search_properties(query.convert_to_h)
+
+      ...
+    end
+  end
+end
+```
