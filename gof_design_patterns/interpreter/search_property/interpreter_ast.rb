@@ -6,3 +6,18 @@
 "?q=テスト in:propertyName,remarks chinryo:<500000 warkMinutesMin:<5"
 
 # TODO: parserとastの実装を見て作ってみる
+require_relative 'not_use_interpreter_ast'
+
+class And
+  def initialize(expression1, expression2)
+    @expression1 = expression1
+    @expression2 = expression2
+  end
+
+  def convert_to_h
+    {
+      @expression1.convert_to_h.merge(@expression2.convert_to_h)
+      
+    }
+  end
+end
