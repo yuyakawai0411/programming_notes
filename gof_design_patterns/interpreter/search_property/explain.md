@@ -12,15 +12,15 @@ front から検索パラメータを受け取り、別の検索 API に渡すパ
 { "filter" => [
     { "propertyName:In" => "テスト" },
     { "chinryo:Less" => "1000000" },
-    "operator" => "and"
-  ]
+  ],
+  "operator" => "and"
 }
 // OR検索
 { "filter" => [
     { "propertyName:In" => "テスト" },
     { "chinryo:Less" => "1000000" },
-    "operator" => "or"
   ]
+  "operator" => "or"
 }
 ```
 
