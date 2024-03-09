@@ -1,4 +1,4 @@
-# singleton パターン
+# Interpreter パターン
 
 ## 目次
 
@@ -20,8 +20,9 @@
    3. parser を作る
    4. メリット・デメリット
 7. 具体的に使われている箇所
-8. GitHub の AdvancedSearch
-9. bb での実装
+   1. GitHub の AdvancedSearch
+   2. bb での実装
+8. その他
 
 ## 適用箇所
 
@@ -110,7 +111,7 @@ front から 何かしらの URL クエリパラメータで物件名と賃料�
 ```json
 // AND検索
 { "filter" => [
-    { "propertyName:in" => "テスト" },
+    { "propertyName:in" => "test" },
     { "chinryo:ltep" => "500000" },
     { "chinryo:gtep" => "0" },
   ],
@@ -118,7 +119,7 @@ front から 何かしらの URL クエリパラメータで物件名と賃料�
 }
 // OR検索
 { "filter" => [
-    { "propertyName:In" => "テスト" },
+    { "propertyName:In" => "test" },
     { "chinryo:ltep" => "500000" },
     { "chinryo:gtep" => "0" },
   ]
@@ -131,7 +132,7 @@ front から 何かしらの URL クエリパラメータで物件名と賃料�
 ```ruby
 filters =
   { "filter" => [
-      { "propertyName:in" => "テスト" },
+      { "propertyName:in" => "test" },
       { "chinryo:ltep" => "500000" },
       { "chinryo:gtep" => "0" },
     ],
@@ -144,7 +145,7 @@ Kensakukun.search(filters)
 
 ### front から渡される URL クエリパラメータ
 
-`"?property_name=テスト&chinryo_max=500000&chinryo_min=0"`
+`?property_name=test&chinryo=500000`
 
 ### 専用の Hash パラメータに変換する実装
 
@@ -155,8 +156,7 @@ class PropertyFilter
     def build_property_name_and_chinryo(params)
       filters = [
         property_name_filter(params[:property_name]),
-        chinryo_ltep_filter(params[:chinryo_max]),
-        chinryo_gtep_filter(params[:chinryo_min])
+        chinryo_ltep_filter(params[:chinryo])
       ]
 
       { filter: filters,  operator: "and" }
@@ -168,19 +168,15 @@ class PropertyFilter
       { "propertyName:in" => property_name }
     end
 
-    def chinryo_ltep_filter(chinryo_min)
-      { "chinryo:lteq" => chinryo_min }
-    end
-
-        def chinryo_gtep_filter(chinryo_max)
-      { "chinryo:gtep" => chinryo_max }
+    def chinryo_ltep_filter(chinryo)
+      { "chinryo:ltep" => chinryo }
     end
   end
 end
 
-params = { property_name: 'テスト', chinryo_max: 500000, chinryo_min: 0 }
+params = { property_name: 'test', chinryo: 500000 }
 filters = PropertyFilter.build_property_name_and_chinryo(params)
-Kensakukun.search(filters)
+Kensakukun.search(filters.convert_to_h)
 ```
 
 ### メリット・デメリット
@@ -192,21 +188,213 @@ Kensakukun.search(filters)
 #### デメリット
 
 - 検索対象と条件が増えるたびに、PropertyFilter のメソッドと URL クエリパラメータが増える
-- 物件名がテスト or ( 賃料が 5 万円以下 and 駅徒歩 5 分以内 )のような複雑な検索の実装が難しい
+- 物件名が test and ( 賃料が 5 万円以下 or 駅徒歩 5 分以内 )のような複雑な検索の実装が難しい
 
 ## パターンを使った実装
 
 ### front から渡される URL クエリパラメータ
 
+`?q="and (property_name:test) (or (chinryo_ltep:500000) (wark_minutes_ltep:0))"`
+
 ### AST の雛形を作る
 
+**終端文字クラスの作成**
+
+```ruby
+class FilterBase
+  def initialize(field, matcher, values)
+    @field = field
+    @matcher = matcher
+    @values = values
+  end
+
+  def convert_to_h
+    { "#{field}:#{matcher}": values }
+  end
+
+  private
+
+  attr_reader :field
+  attr_reader :matcher
+  attr_reader :values
+end
+
+class PropertyNameFilter < FilterBase
+  FIELD = 'propertyName'
+  private_constant :FIELD
+
+  MATCHER = 'in'
+  private_constant :MATCHER
+
+  class << self
+    def build(property_name)
+      new(
+        FIELD,
+        MATCHER,
+        property_name
+      )
+    end
+  end
+end
+
+class ChinryoLtepFilter < FilterBase
+  FIELD = 'chinryo'
+  private_constant :FIELD
+
+  MATCHER = 'ltep'
+  private_constant :MATCHER
+
+  class << self
+    def build(amount)
+      new(
+        FIELD,
+        MATCHER,
+        amount
+      )
+    end
+  end
+end
+
+class WarkMinutesLtep < FilterBase
+  FIELD = 'wark_minutes'
+  private_constant :FIELD
+
+  MATCHER = 'ltep'
+  private_constant :MATCHER
+
+  class << self
+    def build(minutes)
+      new(
+        FIELD,
+        MATCHER,
+        minutes
+      )
+    end
+  end
+end
+```
+
+**非終端文字クラスの作成**
+
+```ruby
+class FilterCollectionBase
+  class << self
+    def self.operator
+      raise NotImplementedError, "#{self.name} must implement the .operator class method"
+    end
+  end
+
+  def initialize(expression1, expression2) # 可変長を引数にして実装できそうな気がするな気がする
+    @expression1 = expression1
+    @expression2 = expression2
+  end
+
+  def convert_to_h
+    {
+      filter: [expression1, expression2].map(&:convert_to_h),
+      operator: self.class.operator
+    }
+  end
+
+  private
+
+  attr_reader :expression1, :expression2
+end
+
+class AndFilterCollection < FilterCollectionBase
+  OPERATOR = 'and'
+
+  class << self
+    def operator
+      OPERATOR
+    end
+  end
+end
+
+class OrFilterCollection < FilterCollectionBase
+  OPERATOR = 'or'
+
+  class << self
+    def operator
+      OPERATOR
+    end
+  end
+end
+```
+
 ### parser を作る
+
+**parser の実装**
+
+```ruby
+class Parser
+  def initialize(text)
+    @tokens = text.scan(/\(|\)|\w+/)
+  end
+
+  def puts_tokens
+    tokens
+  end
+
+  def next_token
+    tokens.shift
+  end
+
+  def expression
+    token = next_token
+
+    case token
+    when nil
+      nil
+    when '('
+      result = expression
+      raise 'Expected )' if next_token != ')'
+      result
+    when 'property_name'
+      PropertyNameFilter.build(next_token.to_s)
+    when 'chinryo_ltep'
+      ChinryoLtepFilter.build(next_token.to_i)
+    when 'wark_minutes_ltep'
+      WarkMinutesLtep.build(next_token.to_i)
+    when 'and' # 可変長を引数にして実装できそうな気がする
+      AndFilterCollection.new(expression, expression)
+    when 'or' # 可変長を引数にして実装できそうな気がする
+      OrFilterCollection.new(expression, expression)
+    else
+      raise "Unexpected token: #{token}"
+    end
+  end
+
+  private
+
+  attr_reader :tokens
+end
+
+params = { q: "and (property_name=test) (or (chinryo_ltep=500000) (wark_minutes_ltep=0))" }
+filters = Parser.new(params[:q]).expression
+Kensakukun.search(filters.convert_to_h)
+```
+
+**parser の結果を AST で図示する**
+
+```terminal
+pry(main)> filters.convert_to_h
+=> {:filter=>[{:"propertyName:in"=>"test"}, {:filter=>[{:"chinryo:ltep"=>500000}, {:"wark_minutes:ltep"=>0}], :operator=>"or"}], :operator=>"and"}
+```
+
+```mermaid
+graph TD;
+  AndFilterCollection-->PropertyNameFilter;
+  AndFilterCollection-->OrFilterCollection;
+  OrFilterCollection-->ChinryoLtepFilter;
+  OrFilterCollection-->WarkMinutesLtep;
+```
 
 ### メリット・デメリット
 
 #### メリット
 
-- 物件名がテスト or ( 賃料が 5 万円以下 and 駅徒歩 5 分以内 )のような複雑な検索に対応できる
+- 物件名が test or ( 賃料が 5 万円以下 and 駅徒歩 5 分以内 )のような複雑な検索に対応できる
 - クエリパラメータを見て、どういった条件で検索をしているかがわかりやすい
 
 #### デメリット
@@ -249,3 +437,8 @@ end
 ```
 
 [参考文献](https://github.com/itandi/itandi_bb_backend/blob/f435863e2cd0f0b7596a6be486581be30fc6b95e/app/services/kensakukun/filter/collection.rb#L789)
+
+## その他
+
+外部 DSL、内部 DSL がある。Ruby では eval というメソッドが提供されており、これを使って内部 DSL を簡単に作ることができる。
+https://docs.ruby-lang.org/ja/latest/method/Kernel/m/eval.html

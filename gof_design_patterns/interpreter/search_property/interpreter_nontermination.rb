@@ -1,11 +1,3 @@
-require_relative 'interpreter_termination'
-require 'bundler/inline'
-
-gemfile do
-  source 'https://rubygems.org'
-  gem 'pry'
-end
-
 class FilterCollectionBase
   class << self
     def self.operator
@@ -13,20 +5,21 @@ class FilterCollectionBase
     end
   end
 
-  def initialize(*filters)
-    @filters = filters
+  def initialize(expression1, expression2)
+    @expression1 = expression1
+    @expression2 = expression2
   end
 
   def convert_to_h
     {
-      filter: filters.map(&:convert_to_h),
+      filter: [expression1, expression2].map(&:convert_to_h),
       operator: self.class.operator
     }
   end
 
   private
 
-  attr_reader :filters
+  attr_reader :expression1, :expression2
 end
 
 class AndFilterCollection < FilterCollectionBase
@@ -48,15 +41,3 @@ class OrFilterCollection < FilterCollectionBase
     end
   end
 end
-
-params = { property_name: 'テスト', chinryo_max: 500000, chinryo_min: 0 }
-property_and_filter = AndFilterCollection.new(
-  PropertyNameFilter.build(params[:property_name]),
-  ChinryoFilter.build(params[:chinryo_max], 'gteq'),
-  ChinryoFilter.build(params[:chinryo_min], 'lteq')
-)
-property_or_filter = OrFilterCollection.new(
-  PropertyNameFilter.build(params[:property_name]),
-  ChinryoFilter.build(params[:chinryo_max], 'gteq'),
-  ChinryoFilter.build(params[:chinryo_min], 'lteq')
-)

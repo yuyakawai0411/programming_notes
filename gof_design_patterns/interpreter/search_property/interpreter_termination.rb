@@ -1,11 +1,4 @@
 class FilterBase
-  IN_MATCHER = 'in'
-  GTEQ_MATCHER = 'gteq'
-  LTEQ_MATCHER = 'lteq'
-
-  VALID_MATCHERS = [IN_MATCHER, GTEQ_MATCHER, LTEQ_MATCHER].freeze
-  private_constant :VALID_MATCHERS
-
   def initialize(field, matcher, values)
     @field = field
     @matcher = matcher
@@ -41,21 +34,37 @@ class PropertyNameFilter < FilterBase
   end
 end
 
-class ChinryoFilter < FilterBase
+class ChinryoLtepFilter < FilterBase
   FIELD = 'chinryo'
   private_constant :FIELD
 
-  VALID_MATCHERS = %w[gteq lteq].freeze
-  private_constant :VALID_MATCHERS
+  MATCHER = 'ltep'
+  private_constant :MATCHER
 
   class << self
-    def build(chinryo_amount, matcher)
-      raise ArgumentError, 'matcher is invalid' unless VALID_MATCHERS.include?(matcher)
-
+    def build(amount)
       new(
         FIELD,
-        matcher,
-        chinryo_amount
+        MATCHER,
+        amount
+      )
+    end
+  end
+end
+
+class WarkMinutesLtep < FilterBase
+  FIELD = 'wark_minutes'
+  private_constant :FIELD
+
+  MATCHER = 'ltep'
+  private_constant :MATCHER
+
+  class << self
+    def build(minutes)
+      new(
+        FIELD,
+        MATCHER,
+        minutes
       )
     end
   end
