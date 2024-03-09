@@ -1,0 +1,9 @@
+backup '/home/russ/documents'
+
+backup '/home/russ/music'
+
+backup '/home/russ/images'
+
+to 'external_drive/backups'
+
+interval 60

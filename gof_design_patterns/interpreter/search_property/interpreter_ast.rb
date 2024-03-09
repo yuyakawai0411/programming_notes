@@ -4,7 +4,7 @@
 # - or検索を追加する時も以下のようにするだけで良いため拡張しやすい
 # - 実装が見やすくなる
 "?q=テスト in:propertyName,remarks chinryo:<500000 warkMinutesMin:<5"
-"?propertyName:in=テスト&remarks:in=テスト&chinryo:gteq=500000&warkMinutes:gteq=5"
+"?propertyName:in=テスト&remarks:in=テスト&chinryo:gteq=500000&warkMinutes:gteq=5" # bbの実装(and検索しかできない)
 # TODO: parserとastの実装を見て作ってみる
 require_relative 'not_use_interpreter_ast'
 
