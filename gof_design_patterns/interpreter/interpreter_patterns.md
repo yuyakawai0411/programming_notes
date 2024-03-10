@@ -109,8 +109,8 @@ front から 何かしらの URL クエリパラメータで物件名と賃料�
 
 #### 専用の Hash パラメータ
 
-```json
-// AND検索
+```ruby
+# AND検索
 { "filter" => [
     { "propertyName:in" => "test" },
     { "chinryo:ltep" => "500000" },
@@ -118,7 +118,7 @@ front から 何かしらの URL クエリパラメータで物件名と賃料�
   ],
   "operator" => "and"
 }
-// OR検索
+# OR検索
 { "filter" => [
     { "propertyName:In" => "test" },
     { "chinryo:ltep" => "500000" },
@@ -397,5 +397,5 @@ end
 
 ## その他
 
-外部 DSL、内部 DSL がある。Ruby では eval というメソッドが提供されており、これを使って内部 DSL を簡単に作ることができる。
+外部 DSL、内部 DSL がある。Ruby では eval というメソッドが提供されており、これを使って内部 DSL を簡単に作ることができる<br>
 https://docs.ruby-lang.org/ja/latest/method/Kernel/m/eval.html
