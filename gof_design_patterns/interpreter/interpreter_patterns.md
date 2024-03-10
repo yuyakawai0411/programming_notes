@@ -195,7 +195,7 @@ Kensakukun.search(filters.convert_to_h)
 
 ### front から渡される URL クエリパラメータ
 
-`?q="and (property_name:test) (or (chinryo_ltep:500000) (wark_minutes_ltep:5))"` <br>
+`?q="and (in(property_name=test)) (or (gteq(chinryo=500000)) (gteq(wark_minutes=5)))"` <br>
 context は、test、500000、5
 
 ### AST を作る
@@ -203,98 +203,40 @@ context は、test、500000、5
 **終端文字クラスの作成**
 
 ```ruby
-class FilterBase
-  def initialize(field, matcher, values)
-    @field = field
-    @matcher = matcher
-    @values = values
+class Filter
+  attr_reader :value
+
+  def initialize(value)
+    @value = value
   end
-
-  def convert_to_h
-    { "#{field}:#{matcher}": values }
-  end
-
-  private
-
-  attr_reader :field
-  attr_reader :matcher
-  attr_reader :values
 end
 
-class PropertyNameFilter < FilterBase
+class PropertyNameFilter < Filter
   FIELD = 'propertyName'
-  private_constant :FIELD
-
-  MATCHER = 'in'
-  private_constant :MATCHER
-
-  class << self
-    def build(property_name)
-      new(
-        FIELD,
-        MATCHER,
-        property_name
-      )
-    end
-  end
 end
 
-class ChinryoLtepFilter < FilterBase
+class ChinryoFilter < Filter
   FIELD = 'chinryo'
-  private_constant :FIELD
-
-  MATCHER = 'ltep'
-  private_constant :MATCHER
-
-  class << self
-    def build(amount)
-      new(
-        FIELD,
-        MATCHER,
-        amount
-      )
-    end
-  end
 end
 
-class WarkMinutesLtep < FilterBase
+class WarkMinutesFilter < Filter
   FIELD = 'wark_minutes'
-  private_constant :FIELD
-
-  MATCHER = 'ltep'
-  private_constant :MATCHER
-
-  class << self
-    def build(minutes)
-      new(
-        FIELD,
-        MATCHER,
-        minutes
-      )
-    end
-  end
 end
 ```
 
 **非終端文字クラスの作成**
 
 ```ruby
-class FilterCollectionBase
-  class << self
-    def self.operator
-      raise NotImplementedError, "#{self.name} must implement the .operator class method"
-    end
-  end
-
-  def initialize(expression1, expression2) # 可変長を引数にして実装できそうな気がするな気がする
+class Operator
+  def initialize(expression1, expression2)
     @expression1 = expression1
     @expression2 = expression2
   end
 
-  def convert_to_h
+  def to_query
     {
-      filter: [expression1, expression2].map(&:convert_to_h),
-      operator: self.class.operator
+      filter: [expression1, expression2].map(&:to_query),
+      operator: self.class::OPERATOR
     }
   end
 
@@ -303,24 +245,34 @@ class FilterCollectionBase
   attr_reader :expression1, :expression2
 end
 
-class AndFilterCollection < FilterCollectionBase
+class AndOperator < Operator
   OPERATOR = 'and'
-
-  class << self
-    def operator
-      OPERATOR
-    end
-  end
 end
 
-class OrFilterCollection < FilterCollectionBase
+class OrOperator < Operator
   OPERATOR = 'or'
+end
 
-  class << self
-    def operator
-      OPERATOR
-    end
+class Matcher
+  def initialize(expression)
+    @expression = expression
   end
+
+  def to_query
+    { "#{expression.class::FIELD}:#{self.class::MATCHER}" => expression.value }
+  end
+
+  private
+
+  attr_reader :expression
+end
+
+class GteqMatcher < Matcher
+  MATCHER = 'gteq'
+end
+
+class InMatcher < Matcher
+  MATCHER = 'in'
 end
 ```
 
@@ -329,19 +281,19 @@ end
 **Parser の実装**
 
 ```ruby
-class Parser
-  def initialize(text)
-    @tokens = text.scan(/\(|\)|\w+/) # 字句解析し、contextを抽出する
-  end
+class QueryParser
+  attr_reader :tokens
 
-  def puts_tokens
-    tokens
+  # 字句解析 contextを抽出する
+  def initialize(text)
+    @tokens = text.scan(/\(|\)|\w+/)
   end
 
   def next_token
     tokens.shift
   end
 
+  # 構文解析
   def expression
     token = next_token
 
@@ -353,43 +305,46 @@ class Parser
       raise 'Expected )' if next_token != ')'
       result
     when 'property_name'
-      PropertyNameFilter.build(next_token.to_s)
-    when 'chinryo_ltep'
-      ChinryoLtepFilter.build(next_token.to_i)
-    when 'wark_minutes_ltep'
-      WarkMinutesLtep.build(next_token.to_i)
-    when 'and' # 可変長を引数にして実装できそうな気がする
-      AndFilterCollection.new(expression, expression)
-    when 'or' # 可変長を引数にして実装できそうな気がする
-      OrFilterCollection.new(expression, expression)
+      PropertyNameFilter.new(next_token.to_s)
+    when 'chinryo'
+      ChinryoFilter.new(next_token.to_i)
+    when 'wark_minutes'
+      WarkMinutesFilter.new(next_token.to_i)
+    when 'and'
+      AndOperator.new(expression, expression)
+    when 'or'
+      OrOperator.new(expression, expression)
+    when 'in'
+      InMatcher.new(expression)
+    when 'gteq'
+      GteqMatcher.new(expression)
     else
       raise "Unexpected token: #{token}"
     end
   end
-
-  private
-
-  attr_reader :tokens
 end
 
-params = { q: "and (property_name=test) (or (chinryo_ltep=500000) (wark_minutes_ltep=5))" }
-filters = Parser.new(params[:q]).expression
-Kensakukun.search(filters.convert_to_h)
+params = { q: "and (in(property_name=test)) (or (gteq(chinryo=500000)) (gteq(wark_minutes=5)))" }
+query_expression = QueryParser.new(params[:q]).expression
+Kensakukun.search(query_expression.convert_to_h)
 ```
 
 **Parser の結果を 図示する**
 
 ```terminal
-pry(main)> filters.convert_to_h
+pry(main)> query_expression.convert_to_h
 => {:filter=>[{:"propertyName:in"=>"test"}, {:filter=>[{:"chinryo:ltep"=>500000}, {:"wark_minutes:ltep"=>5}], :operator=>"or"}], :operator=>"and"}
 ```
 
 ```mermaid
 graph TD;
-  AndFilterCollection-->PropertyNameFilter;
+  AndFilterCollection-->InMatcher;
+  InMatcher-->PropertyNameFilter;
   AndFilterCollection-->OrFilterCollection;
-  OrFilterCollection-->ChinryoLtepFilter;
-  OrFilterCollection-->WarkMinutesLtep;
+  OrFilterCollection-->LtepMatcher1;
+  LtepMatcher1-->ChinryoFilter;
+  OrFilterCollection-->LtepMatcher2;
+  LtepMatcher2-->WarkMinutes;
 ```
 
 ### メリット・デメリット

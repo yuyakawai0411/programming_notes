@@ -8,17 +8,15 @@ end
 require_relative 'interpreter_nontermination'
 require_relative 'interpreter_termination'
 
-class Parser
+class QueryParser
+  attr_reader :tokens
+
   def initialize(text)
     @tokens = text.scan(/\(|\)|\w+/)
   end
 
-  def puts_tokens
-    @tokens
-  end
-
   def next_token
-    @tokens.shift
+    tokens.shift
   end
 
   def expression
@@ -32,19 +30,24 @@ class Parser
       raise 'Expected )' if next_token != ')'
       result
     when 'property_name'
-      PropertyNameFilter.build(next_token.to_s)
-    when 'chinryo_ltep'
-      ChinryoLtepFilter.build(next_token.to_i)
-    when 'wark_minutes_ltep'
-      WarkMinutesLtep.build(next_token.to_i)
+      PropertyNameFilter.new(next_token.to_s)
+    when 'chinryo'
+      ChinryoFilter.new(next_token.to_i)
+    when 'wark_minutes'
+      WarkMinutesFilter.new(next_token.to_i)
     when 'and'
-      AndFilterCollection.new(expression, expression)
+      AndOperator.new(expression, expression)
     when 'or'
-      OrFilterCollection.new(expression, expression)
+      OrOperator.new(expression, expression)
+    when 'in'
+      InMatcher.new(expression)
+    when 'gteq'
+      GteqMatcher.new(expression)
     else
       raise "Unexpected token: #{token}"
     end
   end
 end
-params = { q: "and (property_name=test) (or (chinryo_ltep=500000) (wark_minutes_ltep=0))" }
-expression = Parser.new(params[:q]).expression
+params = { q: "and (in(property_name=test)) (or (gteq(chinryo=500000)) (gteq(wark_minutes=5)))" }
+expression = QueryParser.new(params[:q]).expression
+binding.pry

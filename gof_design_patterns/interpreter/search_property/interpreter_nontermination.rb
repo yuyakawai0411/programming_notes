@@ -1,19 +1,13 @@
-class FilterCollectionBase
-  class << self
-    def self.operator
-      raise NotImplementedError, "#{self.name} must implement the .operator class method"
-    end
-  end
-
+class Operator
   def initialize(expression1, expression2)
     @expression1 = expression1
     @expression2 = expression2
   end
 
-  def convert_to_h
+  def to_query
     {
-      filter: [expression1, expression2].map(&:convert_to_h),
-      operator: self.class.operator
+      filter: [expression1, expression2].map(&:to_query),
+      operator: self.class::OPERATOR
     }
   end
 
@@ -22,22 +16,32 @@ class FilterCollectionBase
   attr_reader :expression1, :expression2
 end
 
-class AndFilterCollection < FilterCollectionBase
+class AndOperator < Operator
   OPERATOR = 'and'
-
-  class << self
-    def operator
-      OPERATOR
-    end
-  end
 end
 
-class OrFilterCollection < FilterCollectionBase
+class OrOperator < Operator
   OPERATOR = 'or'
+end
 
-  class << self
-    def operator
-      OPERATOR
-    end
+class Matcher
+  def initialize(expression)
+    @expression = expression
   end
+
+  def to_query
+    { "#{expression.class::FIELD}:#{self.class::MATCHER}" => expression.value }
+  end
+
+  private
+
+  attr_reader :expression
+end
+
+class GteqMatcher < Matcher
+  MATCHER = 'gteq'
+end
+
+class InMatcher < Matcher
+  MATCHER = 'in'
 end
