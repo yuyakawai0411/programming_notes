@@ -16,8 +16,8 @@
    3. メリット・デメリット
 6. パターンを使った実装
    1. front から渡される URL クエリパラメータ
-   2. AST の雛形を作る
-   3. parser を作る
+   2. AST を作る
+   3. Parser を作る
    4. メリット・デメリット
 7. 具体的に使われている箇所
    1. GitHub の AdvancedSearch
@@ -94,9 +94,10 @@ rpr gof_design_patterns/interpreter/sum.rb -f dot | dot -Tpng -oast.png
 
 ## 構成図
 
-- Context が専門用語を表す
-- Expression 周りが AST を表す(Composite パターンになっている)
-- Interpret が解釈した処理の実行を示す
+- このクラス図は構文解析のみで字句解析の部分は図示されていない
+- Expression 周りは AST を表す(Composite パターンになっている)
+- Context は専門用語から抽出した Expression の生成 に必要な値を表す(5.0 + x の x)
+- Interpret は解釈した処理の実行を示す(execute で書かれることもある)
 
 [![Image from Gyazo](https://i.gyazo.com/1b591f4b1a86f35084123ade2ae62fff.png)](https://gyazo.com/1b591f4b1a86f35084123ade2ae62fff)
 
@@ -194,9 +195,10 @@ Kensakukun.search(filters.convert_to_h)
 
 ### front から渡される URL クエリパラメータ
 
-`?q="and (property_name:test) (or (chinryo_ltep:500000) (wark_minutes_ltep:0))"`
+`?q="and (property_name:test) (or (chinryo_ltep:500000) (wark_minutes_ltep:5))"` <br>
+context は、test、500000、5
 
-### AST の雛形を作る
+### AST を作る
 
 **終端文字クラスの作成**
 
@@ -322,14 +324,14 @@ class OrFilterCollection < FilterCollectionBase
 end
 ```
 
-### parser を作る
+### Parser を作る
 
-**parser の実装**
+**Parser の実装**
 
 ```ruby
 class Parser
   def initialize(text)
-    @tokens = text.scan(/\(|\)|\w+/)
+    @tokens = text.scan(/\(|\)|\w+/) # 字句解析し、contextを抽出する
   end
 
   def puts_tokens
@@ -370,16 +372,16 @@ class Parser
   attr_reader :tokens
 end
 
-params = { q: "and (property_name=test) (or (chinryo_ltep=500000) (wark_minutes_ltep=0))" }
+params = { q: "and (property_name=test) (or (chinryo_ltep=500000) (wark_minutes_ltep=5))" }
 filters = Parser.new(params[:q]).expression
 Kensakukun.search(filters.convert_to_h)
 ```
 
-**parser の結果を AST で図示する**
+**Parser の結果を 図示する**
 
 ```terminal
 pry(main)> filters.convert_to_h
-=> {:filter=>[{:"propertyName:in"=>"test"}, {:filter=>[{:"chinryo:ltep"=>500000}, {:"wark_minutes:ltep"=>0}], :operator=>"or"}], :operator=>"and"}
+=> {:filter=>[{:"propertyName:in"=>"test"}, {:filter=>[{:"chinryo:ltep"=>500000}, {:"wark_minutes:ltep"=>5}], :operator=>"or"}], :operator=>"and"}
 ```
 
 ```mermaid
